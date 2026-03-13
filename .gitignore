@@ -9,3 +9,6 @@
 
 # Ignore dump file
 dump.sh
+
+# Ignore venv
+venv/
