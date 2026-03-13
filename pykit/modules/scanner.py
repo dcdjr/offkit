@@ -37,7 +37,7 @@ def fast_scan(target: str, start_port: int = 1, end_port: int = 1024) -> list[in
         print(f"Resolved {target} -> {ip}")
         target = ip
     except socket.gaierror:
-        raise ValueError(f"Cannot resolve hostname: {target}");
+        raise ValueError(f"Cannot resolve hostname: {target}")
 
     with Progress(
         SpinnerColumn(),
