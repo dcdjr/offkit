@@ -25,10 +25,10 @@ pip install -e .
 ### Quick Usage
 Scan a target (replace with your own or scanme.nmap.org for testing)
 ```bash
-python -m pykit scan scanme.nmap.org -s 1 -e 200
+python -m pykit.cli scan scanme.nmap.org --start 1 --end 200
 ```
 
 Or from inside venv:
 ```bash
-offkit scan 127.0.0.1 -s 1 -e 1000
+offkit scan 127.0.0.1 --start 1 --end 1000
 ```
