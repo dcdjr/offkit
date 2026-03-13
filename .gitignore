@@ -1,0 +1,8 @@
+# Ignore build
+*.exe
+
+# Ignore notes
+*.txt
+
+# Ignore dump file
+dump.sh

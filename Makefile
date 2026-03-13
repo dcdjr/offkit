@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Werror -fsanitize=address,undefined -b -O2 -fPIC -shared
+CFLAGS = -Wall -Werror -O2 -fPIC -shared
 LIBS = -lpthread
 
 all: libscanner.so
