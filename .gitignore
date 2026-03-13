@@ -4,5 +4,8 @@
 # Ignore notes
 *.txt
 
+# Ignore ruff cache
+.ruff_cache
+
 # Ignore dump file
 dump.sh
