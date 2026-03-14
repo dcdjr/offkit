@@ -3,6 +3,7 @@ import ctypes.util
 import os
 import socket
 import subprocess
+import shutil
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -17,11 +18,31 @@ LIB_PATH = os.path.abspath(
 
 def _ensure_scanner_library() -> ctypes.CDLL:
     if not os.path.exists(LIB_PATH):
-        subprocess.run(["make"], check=True, cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+        if shutil.which("make"):
+            subprocess.run(["make"], check=True, cwd=repo_root)
+        else:
+            subprocess.run(
+                [
+                    "gcc",
+                    "-Wall",
+                    "-Werror",
+                    "-O2",
+                    "-fPIC",
+                    "-shared",
+                    "-o",
+                    os.path.join(repo_root, "core/scanner/libscanner.so"),
+                    os.path.join(repo_root, "core/scanner/connect_scanner.c"),
+                    "-lpthread",
+                ],
+                check=True,
+                cwd=repo_root,
+            )
 
     lib = ctypes.CDLL(LIB_PATH)
     lib.tcp_connect_scan.argtypes = [
         ctypes.c_char_p,
+        ctypes.c_int,
         ctypes.c_int,
         ctypes.c_int,
         ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
@@ -41,7 +62,9 @@ def fast_scan(target: str, start_port: int = 1, end_port: int = 1024) -> list[in
         raise ValueError("Invalid port range. Use 1-65535 and ensure start <= end.")
 
     try:
-        ip = socket.gethostbyname(target)  # resolves hostname
+        addr_info = socket.getaddrinfo(target, None, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)
+        family, _, _, _, sockaddr = addr_info[0]
+        ip = sockaddr[0]
         print(f"Resolved {target} -> {ip}")
         target = ip
     except socket.gaierror as exc:
@@ -54,10 +77,7 @@ def fast_scan(target: str, start_port: int = 1, end_port: int = 1024) -> list[in
         TextColumn("[progress.description]{task.description}"),
         transient=True,
     ) as progress:
-        task = progress.add_task(
-            f"Scanning {target} {start_port}-{end_port}...",
-            total=end_port - start_port + 1,
-        )
+        progress.add_task(f"Scanning {target} {start_port}-{end_port}...", total=None)
 
         # Prepare output variables
         ports_ptr = ctypes.POINTER(ctypes.c_int)()
@@ -68,11 +88,10 @@ def fast_scan(target: str, start_port: int = 1, end_port: int = 1024) -> list[in
             target.encode("utf-8"),
             start_port,
             end_port,
+            family,
             ctypes.byref(ports_ptr),
             ctypes.byref(count),
         )
-
-        progress.update(task, completed=end_port - start_port + 1)
 
     if ret != 0:
         raise RuntimeError(f"C scan failed with return code {ret}")

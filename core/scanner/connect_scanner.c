@@ -12,7 +12,8 @@
 #define MAX_PORTS 65535
 
 typedef struct {
-    char target[16];
+    char target[INET6_ADDRSTRLEN];
+    int family;
     int start_port;
     int end_port;
     int *open_ports;
@@ -23,16 +24,34 @@ typedef struct {
 void *scan_port(void *arg) {
     thread_args *data = (thread_args*)arg;
     int sock;
-    struct sockaddr_in addr;
 
     for (int port = data->start_port; port <= data->end_port; port++) {
-        sock = socket(AF_INET, SOCK_STREAM, 0);
+        sock = socket(data->family, SOCK_STREAM, 0);
         if (sock < 0) continue;
 
-        // Set up address
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(port);
-        if (inet_pton(AF_INET, data->target, &addr.sin_addr) != 1) {
+        struct sockaddr_storage ss;
+        memset(&ss, 0, sizeof(ss));
+        socklen_t addr_len = 0;
+
+        if (data->family == AF_INET) {
+            struct sockaddr_in *addr4 = (struct sockaddr_in *)&ss;
+            addr4->sin_family = AF_INET;
+            addr4->sin_port = htons(port);
+            if (inet_pton(AF_INET, data->target, &addr4->sin_addr) != 1) {
+                close(sock);
+                continue;
+            }
+            addr_len = sizeof(struct sockaddr_in);
+        } else if (data->family == AF_INET6) {
+            struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&ss;
+            addr6->sin6_family = AF_INET6;
+            addr6->sin6_port = htons(port);
+            if (inet_pton(AF_INET6, data->target, &addr6->sin6_addr) != 1) {
+                close(sock);
+                continue;
+            }
+            addr_len = sizeof(struct sockaddr_in6);
+        } else {
             close(sock);
             continue;
         }
@@ -42,7 +61,7 @@ void *scan_port(void *arg) {
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
-        if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+        if (connect(sock, (struct sockaddr*)&ss, addr_len) == 0) {
             pthread_mutex_lock(data->mutex);
             data->open_ports[(*data->count)++] = port;
             pthread_mutex_unlock(data->mutex);
@@ -52,7 +71,7 @@ void *scan_port(void *arg) {
     return NULL;
 }
 
-extern int tcp_connect_scan(const char* target, int start, int end, int** ports_out, int* count_out) {
+extern int tcp_connect_scan(const char* target, int start, int end, int family, int** ports_out, int* count_out) {
     pthread_t threads[MAX_THREADS];
     thread_args args[MAX_THREADS];
     pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -79,16 +98,33 @@ extern int tcp_connect_scan(const char* target, int start, int end, int** ports_
 
         strncpy(args[i].target, target, sizeof(args[i].target) - 1);
         args[i].target[sizeof(args[i].target) - 1] = '\0';
+        args[i].family = family;
         args[i].open_ports = *ports_out;
         args[i].count = count_out;
         args[i].mutex = &mutex;
 
-        pthread_create(&threads[i], NULL, scan_port, &args[i]);
+        int create_ret = pthread_create(&threads[i], NULL, scan_port, &args[i]);
+        if (create_ret != 0) {
+            for (int j = 0; j < i; j++) {
+                pthread_join(threads[j], NULL);
+            }
+            free(*ports_out);
+            *ports_out = NULL;
+            *count_out = 0;
+            pthread_mutex_destroy(&mutex);
+            return -1;
+        }
     }
 
     // Wait for all threads to finish
     for (int i = 0; i < num_threads; i++) {
-        pthread_join(threads[i], NULL);
+        if (pthread_join(threads[i], NULL) != 0) {
+            free(*ports_out);
+            *ports_out = NULL;
+            *count_out = 0;
+            pthread_mutex_destroy(&mutex);
+            return -1;
+        }
     }
 
     pthread_mutex_destroy(&mutex);

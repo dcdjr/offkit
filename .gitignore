@@ -12,3 +12,10 @@ dump.sh
 
 # Ignore venv
 venv/
+
+# Ignore Python bytecode
+__pycache__/
+*.pyc
+
+# Ignore local scanner build output
+core/scanner/libscanner.so

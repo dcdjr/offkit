@@ -22,3 +22,7 @@ offkit = "pykit.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pykit"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"core/scanner/connect_scanner.c" = "core/scanner/connect_scanner.c"
+"Makefile" = "Makefile"
