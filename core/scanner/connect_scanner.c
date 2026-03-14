@@ -89,6 +89,7 @@ extern int tcp_connect_scan(const char* target, int start, int end, int family, 
     *count_out = 0;
 
     // Launch threads
+    int launched = 0;
     int current_start = start;
     for (int i = 0; i < num_threads; i++) {
         int chunk = ports_per_thread + (i < remainder ? 1 : 0);
@@ -114,19 +115,31 @@ extern int tcp_connect_scan(const char* target, int start, int end, int family, 
             pthread_mutex_destroy(&mutex);
             return -1;
         }
+
+        launched++;
     }
 
-    // Wait for all threads to finish
-    for (int i = 0; i < num_threads; i++) {
-        if (pthread_join(threads[i], NULL) != 0) {
-            free(*ports_out);
-            *ports_out = NULL;
-            *count_out = 0;
-            pthread_mutex_destroy(&mutex);
-            return -1;
+    int join_failed = 0;
+
+    for (int i = 0; i < launched; i++) {
+        int rc = pthread_join(threads[i], NULL);
+        if (rc != 0 && join_failed == 0) {
+            join_failed = rc;
         }
     }
 
     pthread_mutex_destroy(&mutex);
+
+    if (join_failed != 0) {
+        free(*ports_out);
+        *ports_out = NULL;
+        *count_out = 0;
+        return -1;
+    }
+
     return 0; // success
+}
+
+extern void scanner_free(void *ptr) {
+    free(ptr);
 }

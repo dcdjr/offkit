@@ -49,6 +49,10 @@ def _ensure_scanner_library() -> ctypes.CDLL:
         ctypes.POINTER(ctypes.c_int),
     ]
     lib.tcp_connect_scan.restype = ctypes.c_int
+
+    lib.scanner_free.argtypes = [ctypes.c_void_p]
+    lib.scanner_free.restype = None
+
     return lib
 
 
@@ -100,9 +104,7 @@ def fast_scan(target: str, start_port: int = 1, end_port: int = 1024) -> list[in
     open_ports = [ports_ptr[i] for i in range(count.value)]
 
     # Free the C-allocated array to prevent leak
-    libc = ctypes.CDLL(ctypes.util.find_library("c"))
-    libc.free.argtypes = [ctypes.c_void_p]
-    libc.free(ports_ptr)
+    lib.scanner_free(ports_ptr);
 
     # Sort and remove possible duplicates
     return sorted(set(open_ports))
