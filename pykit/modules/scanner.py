@@ -17,36 +17,33 @@ LIB_PATH = os.path.abspath(
 
 
 def _ensure_scanner_library() -> ctypes.CDLL:
-    if not os.path.exists(LIB_PATH):
+    so_path = LIB_PATH
+    c_path = os.path.join(os.path.dirname(__file__), "../../core/scanner/connect_scanner.c")
+
+    # Rebuild if .so is missing OR C file is newer (this fixes scanner_free)
+    if (not os.path.exists(so_path) or 
+        os.path.getmtime(c_path) > os.path.getmtime(so_path)):
+        
+        print("Rebuilding scanner library...")
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+        
         if shutil.which("make"):
             subprocess.run(["make"], check=True, cwd=repo_root)
         else:
-            subprocess.run(
-                [
-                    "gcc",
-                    "-Wall",
-                    "-Werror",
-                    "-O2",
-                    "-fPIC",
-                    "-shared",
-                    "-o",
-                    os.path.join(repo_root, "core/scanner/libscanner.so"),
-                    os.path.join(repo_root, "core/scanner/connect_scanner.c"),
-                    "-lpthread",
-                ],
-                check=True,
-                cwd=repo_root,
-            )
+            subprocess.run([
+                "gcc", "-Wall", "-O2", "-fPIC", "-shared",
+                "-o", so_path,
+                c_path,
+                "-lpthread"
+            ], check=True, cwd=repo_root)
 
-    lib = ctypes.CDLL(LIB_PATH)
+    lib = ctypes.CDLL(so_path)
+
+    # Function signatures
     lib.tcp_connect_scan.argtypes = [
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
+        ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int,
         ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
-        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int)
     ]
     lib.tcp_connect_scan.restype = ctypes.c_int
 
@@ -54,7 +51,6 @@ def _ensure_scanner_library() -> ctypes.CDLL:
     lib.scanner_free.restype = None
 
     return lib
-
 
 # Python wrapper function
 def fast_scan(target: str, start_port: int = 1, end_port: int = 1024) -> list[int]:
